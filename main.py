@@ -1,8 +1,9 @@
 from langchain_openai import ChatOpenAI
 from langchain.prompts.prompt import PromptTemplate
-from langchain_community.vectorstores import Pinecone
+from langchain_pinecone import Pinecone
 from langchain_openai import OpenAIEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import PyPDFLoader
 import os
 from dotenv import load_dotenv
 from typing import List, Optional, Dict, Any
@@ -43,12 +44,17 @@ async def process_document(
 
     try:
         # Process document based on file type
-        if file.filename.endswith('.txt'):
+        if file.filename.lower().endswith('.txt'):
             with open(temp_path, 'r') as f:
                 text = f.read()
                 raw_docs = [text]
+        elif file.filename.lower().endswith('.pdf'):
+            print(f"Processing PDF file: {file.filename}")
+            loader = PyPDFLoader(temp_path)
+            raw_docs = [doc.page_content for doc in loader.load()]
+            print(f"Loaded {len(raw_docs)} pages from PDF")
         else:
-            raise ValueError("Unsupported file type")
+            raise ValueError("Unsupported file type. Only .txt and .pdf files are supported.")
 
         # Split text into chunks
         text_splitter = RecursiveCharacterTextSplitter(
@@ -59,19 +65,27 @@ async def process_document(
 
         # Add metadata to each chunk
         for doc in documents:
-            doc.metadata = {
-                "clone_id": clone_id,
-                "workspace_id": workspace_id,
-                "channel_id": channel_id,
-                "source": file.filename
-            }
+            metadata = {"clone_id": clone_id}
+            if workspace_id is not None:
+                metadata["workspace_id"] = workspace_id
+            if channel_id is not None:
+                metadata["channel_id"] = channel_id
+            metadata["source"] = file.filename
+            doc.metadata = metadata
 
         # Store embeddings in Pinecone
-        embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
-        index = pc.Index(pinecone_index)
-        vectorstore = Pinecone(index=index, embedding=embeddings, text_key="text")
-        vectorstore.add_documents(documents)
-
+        print(f"Try to store {len(documents)} documents in Pinecone")
+        embeddings = OpenAIEmbeddings(model="text-embedding-3-large")  # Use larger embedding model
+        print(f"Using OpenAI embeddings with text-embedding-3-large model")
+        
+        # Initialize Pinecone vectorstore
+        vectorstore = Pinecone.from_documents(
+            documents=documents,
+            embedding=embeddings,
+            index_name=pinecone_index,
+            text_key="text"
+        )
+        print("Documents stored successfully in Pinecone")
     finally:
         # Cleanup
         os.remove(temp_path)
@@ -88,7 +102,7 @@ def get_relevant_context(
     if not pinecone_index:
         raise ValueError("pinecone_index is required")
 
-    embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
+    embeddings = OpenAIEmbeddings(model="text-embedding-3-large")  # Use larger embedding model
     index = pc.Index(pinecone_index)
     vectorstore = Pinecone(index=index, embedding=embeddings, text_key="text")
 
