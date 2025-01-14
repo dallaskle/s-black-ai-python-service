@@ -12,3 +12,6 @@ pydantic==2.5.3
 typing-extensions==4.9.0
 uuid==1.30
 PyPDF2==3.0.1
+# Add these lines for Render deployment
+gunicorn==21.2.0
+uvicorn[standard]
