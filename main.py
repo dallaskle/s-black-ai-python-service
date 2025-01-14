@@ -34,6 +34,13 @@ async def process_document(
     if not pinecone_index:
         raise ValueError("pinecone_index is required")
 
+    print("\n=== Starting Document Processing ===")
+    print(f"File: {file.filename}")
+    print(f"Clone ID: {clone_id}")
+    print(f"Workspace ID: {workspace_id}")
+    print(f"Channel ID: {channel_id}")
+    print(f"Pinecone Index: {pinecone_index}")
+
     # Save uploaded file temporarily
     temp_dir = tempfile.mkdtemp()
     temp_path = os.path.join(temp_dir, file.filename)
@@ -43,6 +50,8 @@ async def process_document(
         await out_file.write(content)
 
     try:
+        print(f"\nProcessing file type: {file.filename.split('.')[-1]}")
+        
         # Process document based on file type
         if file.filename.lower().endswith('.txt'):
             with open(temp_path, 'r') as f:
@@ -73,20 +82,26 @@ async def process_document(
             metadata["source"] = file.filename
             doc.metadata = metadata
 
-        # Store embeddings in Pinecone
-        print(f"Try to store {len(documents)} documents in Pinecone")
-        embeddings = OpenAIEmbeddings(model="text-embedding-3-large")  # Use larger embedding model
-        print(f"Using OpenAI embeddings with text-embedding-3-large model")
+        print(f"\nText splitting results:")
+        print(f"- Number of documents after splitting: {len(documents)}")
+        print(f"- Sample metadata: {documents[0].metadata if documents else 'No documents'}")
+
+        print("\nInitializing OpenAI embeddings...")
+        embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
         
-        # Initialize Pinecone vectorstore
+        print("\nStoring in Pinecone...")
         vectorstore = Pinecone.from_documents(
             documents=documents,
             embedding=embeddings,
             index_name=pinecone_index,
             text_key="text"
         )
-        print("Documents stored successfully in Pinecone")
+        print("✓ Successfully stored in Pinecone")
+    except Exception as e:
+        print(f"\n❌ Error in process_document: {str(e)}")
+        raise
     finally:
+        print("\nCleaning up temporary files...")
         # Cleanup
         os.remove(temp_path)
         os.rmdir(temp_dir)
@@ -102,7 +117,11 @@ def get_relevant_context(
     if not pinecone_index:
         raise ValueError("pinecone_index is required")
 
-    embeddings = OpenAIEmbeddings(model="text-embedding-3-large")  # Use larger embedding model
+    print("\n=== Retrieving Context ===")
+    print(f"Prompt: {prompt[:100]}...")
+    print(f"Clone ID: {clone_id}")
+
+    embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
     index = pc.Index(pinecone_index)
     vectorstore = Pinecone(index=index, embedding=embeddings, text_key="text")
 
@@ -113,6 +132,8 @@ def get_relevant_context(
     if channel_id:
         filter_dict["channel_id"] = channel_id
 
+    print(f"Filter: {filter_dict}")
+
     retriever = vectorstore.as_retriever(
         search_kwargs={
             "filter": filter_dict,
@@ -121,6 +142,7 @@ def get_relevant_context(
     )
     
     context = retriever.invoke(prompt)
+    print(f"Retrieved {len(context)} relevant documents")
     return [doc.page_content for doc in context]
 
 def format_chat_history(chat_history: List[Dict]) -> str:
@@ -147,7 +169,11 @@ async def generate_ai_response(
     if not pinecone_index:
         raise ValueError("pinecone_index is required")
 
-    # Get relevant context from vector store
+    print("\n=== Generating AI Response ===")
+    print(f"Prompt: {prompt[:100]}...")
+    print(f"Clone ID: {clone_id}")
+    print(f"Chat history length: {len(chat_history) if chat_history else 0}")
+
     context = get_relevant_context(
         prompt,
         clone_id,
@@ -155,7 +181,7 @@ async def generate_ai_response(
         channel_id=channel_id,
         pinecone_index=pinecone_index
     )
-    context_str = "\n".join(context)
+    print(f"\nRetrieved context length: {len(context)}")
     
     # Format chat history if available
     history_str = format_chat_history(chat_history) if chat_history else ""
@@ -170,11 +196,13 @@ async def generate_ai_response(
         "base_prompt": base_prompt,
         "history": history_str,
         "query": prompt,
-        "context": context_str
+        "context": context
     })
 
     # Generate response
     llm = ChatOpenAI(temperature=0.7, model_name=os.getenv("OPENAI_MODEL_NAME"))
+    print("\nGenerating LLM response...")
     results = await llm.ainvoke(prompt_with_context)
+    print("✓ Response generated successfully")
     
     return results.content

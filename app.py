@@ -65,14 +65,13 @@ async def upload_document(
     channel_id: Optional[str] = Form(None),
     api_key: str = Depends(get_api_key)
 ):
-    print("\n=== Document Upload Request Details ===")
-    print(f"File name: {file.filename}")
-    print(f"File content type: {file.content_type}")
-    print(f"Clone ID: {clone_id}")
-    print(f"Workspace ID: {workspace_id}")
-    print(f"Channel ID: {channel_id}")
-    print(f"Pinecone Index: {pinecone_index}")
-    print("=====================================\n")
+    print("\n=== Document Upload Endpoint ===")
+    print(f"Request details:")
+    print(f"- File: {file.filename} ({file.content_type})")
+    print(f"- Clone ID: {clone_id}")
+    print(f"- Workspace ID: {workspace_id}")
+    print(f"- Channel ID: {channel_id}")
+    print(f"- Pinecone Index: {pinecone_index}")
     
     try:
         await process_document(
@@ -82,13 +81,22 @@ async def upload_document(
             channel_id=channel_id,
             pinecone_index=pinecone_index
         )
+        print("✓ Document processing completed successfully")
         return {"status": "success"}
     except Exception as e:
-        print(f"Error processing document: {str(e)}")
+        print(f"❌ Error in upload_document: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, api_key: str = Depends(get_api_key)):
+    print("\n=== Chat Endpoint ===")
+    print(f"Request details:")
+    print(f"- Clone ID: {request.clone_id}")
+    print(f"- Workspace ID: {request.workspace_id}")
+    print(f"- Channel ID: {request.channel_id}")
+    print(f"- Message history length: {len(request.messages)}")
+    print(f"- Query: {request.query[:100]}...")
+    
     try:
         chat_history = [msg.dict() for msg in request.messages[:-1]]
         
@@ -101,12 +109,14 @@ async def chat(request: ChatRequest, api_key: str = Depends(get_api_key)):
             base_prompt=request.base_prompt,
             pinecone_index=request.pinecone_index
         )
+        print("✓ Chat response generated successfully")
         return ChatResponse(
             status="success",
             response=response,
             error=None
         )
     except Exception as e:
+        print(f"❌ Error in chat endpoint: {str(e)}")
         return ChatResponse(
             status="error",
             response=None,
