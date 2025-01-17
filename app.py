@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 from dotenv import load_dotenv
 from uploadMessageHistory import upload_message_history
+from messageSearch import search_messages
 from datetime import datetime
 
 load_dotenv()
@@ -71,6 +72,20 @@ class MessageHistoryUpload(BaseModel):
     workspace_id: UUID4
     pinecone_index: str
     time_range: TimeRange
+
+class MessageSearchRequest(BaseModel):
+    workspace_id: str
+    channel_id: Optional[str] = None
+    base_prompt: str
+    pinecone_index: str
+    query: str
+
+class MessageSearchResponse(BaseModel):
+    status: str
+    context: Optional[str]
+    results: Optional[List[Dict[str, Any]]]
+    ai_response: Optional[str]
+    error: Optional[str]
 
 @app.get("/health")
 async def health_check(api_key: str = Depends(get_api_key)):
@@ -170,3 +185,37 @@ async def upload_messages(
     except Exception as e:
         print(f"❌ Error in upload_messages: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/message-search", response_model=MessageSearchResponse)
+async def message_search(request: MessageSearchRequest, api_key: str = Depends(get_api_key)):
+    print("\n=== Message Search Endpoint ===")
+    print(f"Request details:")
+    print(f"- Workspace ID: {request.workspace_id}")
+    print(f"- Channel ID: {request.channel_id}")
+    print(f"- Query: {request.query[:100]}...")
+    
+    try:
+        result = await search_messages(
+            query=request.query,
+            workspace_id=request.workspace_id,
+            channel_id=request.channel_id,
+            base_prompt=request.base_prompt,
+            pinecone_index=request.pinecone_index
+        )
+        print("✓ Message search completed successfully")
+        return MessageSearchResponse(
+            status="success",
+            context=result.get("context"),
+            results=result.get("results"),
+            ai_response=result.get("ai_response"),
+            error=None
+        )
+    except Exception as e:
+        print(f"❌ Error in message search: {str(e)}")
+        return MessageSearchResponse(
+            status="error",
+            context=None,
+            results=None,
+            ai_response=None,
+            error=str(e)
+        )
