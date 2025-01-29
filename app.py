@@ -90,7 +90,7 @@ class MessageSearchResponse(BaseModel):
     error: Optional[str]
 
 @app.get("/health")
-async def health_check(api_key: str = Depends(get_api_key)):
+async def health_check():
     return {"status": "healthy"}
 
 @app.post("/documents")
