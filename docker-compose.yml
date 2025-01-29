@@ -1,14 +1,17 @@
 version: '3.8'
 
 services:
-  api:
+  ai-service:
     build: .
     ports:
       - "8000:8000"
+    environment:
+      - PYTHON_SERVICE_API_KEY=${PYTHON_SERVICE_API_KEY}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL_NAME=${OPENAI_MODEL_NAME:-gpt-4-turbo-preview}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-large}
     volumes:
       - .:/app
-    environment:
-      - PYTHONPATH=/app
-    command: uvicorn app:app --host 0.0.0.0 --port 8000 --reload
-    env_file:
-      - .env 
+    restart: unless-stopped 

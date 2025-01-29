@@ -16,16 +16,16 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["*"],  # Update this in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # API Key Authentication
-API_KEY = os.getenv("DALLAS_API_KEY_BACKEND")
+API_KEY = os.getenv("PYTHON_SERVICE_API_KEY")
 if not API_KEY:
-    raise ValueError("DALLAS_API_KEY_BACKEND environment variable is not set")
+    raise ValueError("PYTHON_SERVICE_API_KEY environment variable is not set")
 
 api_key_header = APIKeyHeader(name="X-API-Key")
 
@@ -42,18 +42,19 @@ class Message(BaseModel):
     content: str
 
 class ChatRequest(BaseModel):
-    messages: List[Message]
-    clone_id: str
-    workspace_id: Optional[str] = None
-    channel_id: Optional[str] = None
-    base_prompt: str
-    pinecone_index: str
-    query: str
+    content: str
+    user_id: str
+    project_id: Optional[str] = None
+    feature_id: Optional[str] = None
+    base_prompt: str = """You are an AI assistant helping with software development tasks.
+    You can help create and manage features, answer questions, and provide guidance.
+    Use the available tools when necessary to perform actions."""
 
 class ChatResponse(BaseModel):
-    status: str
-    response: Optional[str]
-    error: Optional[str]
+    success: bool
+    response: str
+    error: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
 
 class MessageData(BaseModel):
     id: UUID4
@@ -126,35 +127,36 @@ async def upload_document(
 async def chat(request: ChatRequest, api_key: str = Depends(get_api_key)):
     print("\n=== Chat Endpoint ===")
     print(f"Request details:")
-    print(f"- Clone ID: {request.clone_id}")
-    print(f"- Workspace ID: {request.workspace_id}")
-    print(f"- Channel ID: {request.channel_id}")
-    print(f"- Message history length: {len(request.messages)}")
-    print(f"- Query: {request.query[:100]}...")
+    print(f"- User ID: {request.user_id}")
+    print(f"- Project ID: {request.project_id}")
+    print(f"- Feature ID: {request.feature_id}")
+    print(f"- Content: {request.content[:100]}...")
     
     try:
-        chat_history = [msg.dict() for msg in request.messages[:-1]]
-        
-        response = await generate_ai_response(
-            prompt=request.query,
-            chat_history=chat_history,
-            clone_id=request.clone_id,
-            workspace_id=request.workspace_id,
-            channel_id=request.channel_id,
+        result = await generate_ai_response(
+            prompt=request.content,
             base_prompt=request.base_prompt,
-            pinecone_index=request.pinecone_index
+            user_id=request.user_id,
+            project_id=request.project_id,
+            feature_id=request.feature_id
         )
+
         print("✓ Chat response generated successfully")
         return ChatResponse(
-            status="success",
-            response=response,
-            error=None
+            success=True,
+            response=result["response"],
+            metadata={
+                "project_id": request.project_id,
+                "feature_id": request.feature_id,
+                "tool_used": result.get("tool_used"),
+                "tool_result": result.get("tool_result")
+            }
         )
     except Exception as e:
         print(f"❌ Error in chat endpoint: {str(e)}")
         return ChatResponse(
-            status="error",
-            response=None,
+            success=False,
+            response="",
             error=str(e)
         )
 

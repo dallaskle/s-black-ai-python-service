@@ -1,208 +1,283 @@
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain.prompts.prompt import PromptTemplate
-from langchain_pinecone import Pinecone
-from langchain_openai import OpenAIEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader
 import os
 from dotenv import load_dotenv
 from typing import List, Optional, Dict, Any
 from fastapi import UploadFile
-import aiofiles
-import tempfile
-from pinecone import Pinecone as PineconeClient
+import aiohttp
+import json
+from tools.base import ContextSearchResult
+from tools.create_feature import CreateFeatureTool
 
 load_dotenv()
 
 # Environment setup
-PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 os.environ["LANGCHAIN_API_KEY"] = os.getenv("LANGCHAIN_API_KEY")
 os.environ["LANGCHAIN_TRACING_V2"] = os.getenv("LANGCHAIN_TRACING_V2")
 os.environ["LANGCHAIN_PROJECT"] = os.getenv("LANGCHAIN_PROJECT")
 
-# Initialize Pinecone
-pc = PineconeClient(api_key=PINECONE_API_KEY)
+async def get_supabase_client():
+    """Get an authenticated Supabase client"""
+    supabase_url = os.environ.get('SUPABASE_URL')
+    supabase_service_key = os.environ.get('SUPABASE_SERVICE_KEY')
+    
+    if not supabase_url or not supabase_service_key:
+        raise ValueError("Missing Supabase configuration")
+        
+    return {
+        "url": supabase_url,
+        "key": supabase_service_key
+    }
+
+async def get_relevant_context(
+    query: str,
+    embedding: List[float]
+) -> List[ContextSearchResult]:
+    """Get relevant context using Supabase's vector similarity search"""
+    client = await get_supabase_client()
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            f"{client['url']}/rest/v1/rpc/match_documents",
+            headers={
+                "apikey": client["key"],
+                "Authorization": f"Bearer {client['key']}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "query_embedding": embedding,
+                "match_threshold": 0.5,
+                "match_count": 10
+            }
+        ) as response:
+            if response.status != 200:
+                raise Exception(f"Error searching documents: {await response.text()}")
+                
+            results = await response.json()
+            print(f"Results: {results}")
+            context_results = []
+            
+            for doc in results:
+                try:
+                    metadata = doc.get("metadata", {})
+                    if metadata is None:
+                        metadata = {}
+                        
+                    context_results.append(ContextSearchResult(
+                        id=str(doc.get("id", "")),
+                        content=doc.get("content", ""),
+                        metadata=metadata,
+                        doc_type=doc.get("doc_type", "unknown"),
+                        project_id=doc.get("project_id"),
+                        feature_id=doc.get("feature_id"),
+                        ticket_id=doc.get("ticket_id"),
+                        validation_id=doc.get("validation_id"),
+                        similarity=float(doc.get("similarity", 0.0))
+                    ))
+                except Exception as e:
+                    print(f"Error processing document: {e}")
+                    continue
+
+            print(f"Context results: {context_results}")
+            return context_results
+
+async def generate_embedding(text: str) -> List[float]:
+    """Generate embedding for text using OpenAI"""
+    try:
+        embeddings = OpenAIEmbeddings(
+            model=os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002"),
+            openai_api_key=os.getenv("OPENAI_API_KEY"),
+            chunk_size=1000
+        )
+        return await embeddings.aembed_query(text)
+    except Exception as e:
+        print(f"Error generating embedding: {str(e)}")
+        raise
+
+async def process_with_langchain(
+    query: str,
+    context: str,
+    tools: List[Any]
+) -> Dict[str, Any]:
+    """Process the query using LangChain with the given context and tools"""
+    prompt_template = """You are an AI assistant helping with software development tasks.
+    Use the following context to understand the current state and requirements:
+    
+    {context}
+    
+    User Query: {query}
+    
+    Think through this step-by-step:
+    1. Analyze the context and query
+    2. Determine what action needs to be taken
+    3. Use the appropriate tool if needed
+    4. Provide a clear response
+    
+    Available Tools:
+    {tool_descriptions}
+    
+    If you need to use a tool, format your response like this:
+    TOOL_START
+    tool_name: {{
+        "param1": "value1",
+        "param2": "value2"
+    }}
+    TOOL_END
+    
+    Then continue with your explanation.
+    
+    Response:"""
+    
+    tool_descriptions = "\n".join([
+        f"- {tool.name}: {tool.description}"
+        for tool in tools
+    ])
+    
+    prompt = PromptTemplate(
+        template=prompt_template,
+        input_variables=["context", "query", "tool_descriptions"]
+    )
+    
+    llm = ChatOpenAI(temperature=0.7, model_name=os.getenv("OPENAI_MODEL_NAME"))
+    
+    # Generate the initial response
+    response = await llm.ainvoke(
+        prompt.format(
+            context=context,
+            query=query,
+            tool_descriptions=tool_descriptions
+        )
+    )
+    
+    # Parse the response to find tool commands
+    content = response.content
+    tool_used = None
+    tool_result = None
+    
+    try:
+        if "TOOL_START" in content and "TOOL_END" in content:
+            # Extract tool command
+            tool_section = content[content.index("TOOL_START"):content.index("TOOL_END")]
+            tool_name = tool_section.split(":")[0].replace("TOOL_START", "").strip()
+            tool_params = json.loads(tool_section.split(":", 1)[1].strip())
+            
+            # Find and execute the tool
+            for tool in tools:
+                if tool.name == tool_name:
+                    tool_used = tool_name
+                    tool_result = await tool.execute(**tool_params)
+                    break
+    except Exception as e:
+        print(f"Error executing tool: {str(e)}")
+        # Continue with the response even if tool execution fails
+    
+    return {
+        "response": content,
+        "tool_used": tool_used,
+        "tool_result": tool_result
+    }
 
 async def process_document(
     file: UploadFile,
-    clone_id: str,
-    workspace_id: Optional[str] = None,
-    channel_id: Optional[str] = None,
-    pinecone_index: Optional[str] = None
+    user_id: str,
+    project_id: Optional[str] = None,
+    feature_id: Optional[str] = None
 ) -> None:
-    """Process and store document embeddings with metadata."""
-    if not pinecone_index:
-        raise ValueError("pinecone_index is required")
-
+    """Process and store document embeddings with metadata in Supabase."""
     print("\n=== Starting Document Processing ===")
     print(f"File: {file.filename}")
-    print(f"Clone ID: {clone_id}")
-    print(f"Workspace ID: {workspace_id}")
-    print(f"Channel ID: {channel_id}")
-    print(f"Pinecone Index: {pinecone_index}")
+    print(f"User ID: {user_id}")
+    print(f"Project ID: {project_id}")
+    print(f"Feature ID: {feature_id}")
 
     # Save uploaded file temporarily
-    temp_dir = tempfile.mkdtemp()
-    temp_path = os.path.join(temp_dir, file.filename)
-    
-    async with aiofiles.open(temp_path, 'wb') as out_file:
-        content = await file.read()
-        await out_file.write(content)
+    content = await file.read()
+    text = content.decode('utf-8')
 
-    try:
-        print(f"\nProcessing file type: {file.filename.split('.')[-1]}")
-        
-        # Process document based on file type
-        if file.filename.lower().endswith('.txt'):
-            with open(temp_path, 'r') as f:
-                text = f.read()
-                raw_docs = [text]
-        elif file.filename.lower().endswith('.pdf'):
-            print(f"Processing PDF file: {file.filename}")
-            loader = PyPDFLoader(temp_path)
-            raw_docs = [doc.page_content for doc in loader.load()]
-            print(f"Loaded {len(raw_docs)} pages from PDF")
-        else:
-            raise ValueError("Unsupported file type. Only .txt and .pdf files are supported.")
-
-        # Split text into chunks
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=100
-        )
-        documents = text_splitter.create_documents(raw_docs)
-
-        # Add metadata to each chunk
-        for doc in documents:
-            metadata = {"clone_id": clone_id}
-            if workspace_id is not None:
-                metadata["workspace_id"] = workspace_id
-            if channel_id is not None:
-                metadata["channel_id"] = channel_id
-            metadata["source"] = file.filename
-            doc.metadata = metadata
-
-        print(f"\nText splitting results:")
-        print(f"- Number of documents after splitting: {len(documents)}")
-        print(f"- Sample metadata: {documents[0].metadata if documents else 'No documents'}")
-
-        print("\nInitializing OpenAI embeddings...")
-        embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
-        
-        print("\nStoring in Pinecone...")
-        vectorstore = Pinecone.from_documents(
-            documents=documents,
-            embedding=embeddings,
-            index_name=pinecone_index,
-            text_key="text"
-        )
-        print("✓ Successfully stored in Pinecone")
-    except Exception as e:
-        print(f"\n❌ Error in process_document: {str(e)}")
-        raise
-    finally:
-        print("\nCleaning up temporary files...")
-        # Cleanup
-        os.remove(temp_path)
-        os.rmdir(temp_dir)
-
-def get_relevant_context(
-    prompt: str,
-    clone_id: str,
-    workspace_id: Optional[str] = None,
-    channel_id: Optional[str] = None,
-    pinecone_index: str = None
-) -> List[str]:
-    """Retrieve relevant context with metadata filtering."""
-    if not pinecone_index:
-        raise ValueError("pinecone_index is required")
-
-    print("\n=== Retrieving Context ===")
-    print(f"Prompt: {prompt[:100]}...")
-    print(f"Clone ID: {clone_id}")
-
-    embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
-    index = pc.Index(pinecone_index)
-    vectorstore = Pinecone(index=index, embedding=embeddings, text_key="text")
-
-    # Build metadata filter
-    filter_dict = {"clone_id": clone_id}
-    if workspace_id:
-        filter_dict["workspace_id"] = workspace_id
-    if channel_id:
-        filter_dict["channel_id"] = channel_id
-
-    print(f"Filter: {filter_dict}")
-
-    retriever = vectorstore.as_retriever(
-        search_kwargs={
-            "filter": filter_dict,
-            "k": 5  # Number of relevant chunks to retrieve
-        }
+    # Split text into chunks
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=100
     )
-    
-    context = retriever.invoke(prompt)
-    print(f"Retrieved {len(context)} relevant documents")
-    return [doc.page_content for doc in context]
+    chunks = text_splitter.split_text(text)
 
-def format_chat_history(chat_history: List[Dict]) -> str:
-    """Format chat history into a string for context."""
-    if not chat_history:
-        return ""
-    
-    formatted_history = "\nPrevious conversation:\n"
-    for message in chat_history:
-        role = "You" if message.get("role") == "assistant" else "User"
-        formatted_history += f"{role}: {message.get('content')}\n"
-    return formatted_history
+    # Generate embeddings and store in Supabase
+    embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
+    client = await get_supabase_client()
+
+    for chunk in chunks:
+        embedding = await embeddings.aembed_query(chunk)
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{client['url']}/rest/v1/ai_docs",
+                headers={
+                    "apikey": client["key"],
+                    "Authorization": f"Bearer {client['key']}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "content": chunk,
+                    "embedding": embedding,
+                    "doc_type": "uploaded_document",
+                    "project_id": project_id,
+                    "feature_id": feature_id,
+                    "metadata": {
+                        "source": file.filename,
+                        "user_id": user_id
+                    }
+                }
+            ) as response:
+                if response.status != 201:
+                    raise Exception(f"Error storing document: {await response.text()}")
+
+    print("✓ Successfully processed and stored document")
 
 async def generate_ai_response(
     prompt: str,
     base_prompt: str,
-    clone_id: str,
-    chat_history: Optional[List[Dict]] = None,
-    workspace_id: Optional[str] = None,
-    channel_id: Optional[str] = None,
-    pinecone_index: Optional[str] = None
-) -> str:
-    """Generate an AI response based on the prompt, chat history, and metadata filters."""
-    if not pinecone_index:
-        raise ValueError("pinecone_index is required")
+    user_id: str,
+    project_id: Optional[str] = None,
+    feature_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """Generate an AI response based on the prompt and context"""
+    print(f"Generating AI response for prompt: {prompt}")
+    try:
+        # 1. Generate embedding for the query
+        embedding = await generate_embedding(prompt)
+        print("Generated embedding")
+        
+        # 2. Get relevant context using similarity search
+        context_results = await get_relevant_context(prompt, embedding)
+        print(f"Found {len(context_results)} relevant context items")
 
-    print("\n=== Generating AI Response ===")
-    print(f"Prompt: {prompt[:100]}...")
-    print(f"Clone ID: {clone_id}")
-    print(f"Chat history length: {len(chat_history) if chat_history else 0}")
+        # 3. Format context for LLM
+        formatted_context = "\n".join([
+            f"Document ({doc.doc_type}): {doc.content}\n"
+            f"Metadata: {json.dumps(doc.metadata)}\n"
+            for doc in context_results
+        ])
+        print("Formatted context")
 
-    context = get_relevant_context(
-        prompt,
-        clone_id,
-        workspace_id=workspace_id,
-        channel_id=channel_id,
-        pinecone_index=pinecone_index
-    )
-    print(f"\nRetrieved context length: {len(context)}")
-    
-    # Format chat history if available
-    history_str = format_chat_history(chat_history) if chat_history else ""
-    
-    # Prepare the complete prompt using provided base prompt
-    template = PromptTemplate(
-        template="{base_prompt}{history} User Message: {query} Context: {context}",
-        input_variables=["base_prompt", "history", "query", "context"]
-    )
-    
-    prompt_with_context = template.invoke({
-        "base_prompt": base_prompt,
-        "history": history_str,
-        "query": prompt,
-        "context": context
-    })
+        # 4. Initialize available tools with context
+        tools = [
+            CreateFeatureTool(context_results=context_results),
+            # Add other tools here as they're implemented
+        ]
+        print("Initialized tools")
 
-    # Generate response
-    llm = ChatOpenAI(temperature=0.7, model_name=os.getenv("OPENAI_MODEL_NAME"))
-    print("\nGenerating LLM response...")
-    results = await llm.ainvoke(prompt_with_context)
-    print("✓ Response generated successfully")
-    
-    return results.content
+        # 5. Process with LangChain
+        result = await process_with_langchain(
+            query=prompt,
+            context=formatted_context,
+            tools=tools
+        )
+        print("Processed with LangChain")
+        print(f"Result: {result}")
+        return result
+        
+    except Exception as e:
+        print(f"Error generating AI response: {str(e)}")
+        raise
