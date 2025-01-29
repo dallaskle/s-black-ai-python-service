@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import os
 import aiohttp
 from .base import BaseTool, ContextSearchResult
@@ -6,6 +6,10 @@ from .base import BaseTool, ContextSearchResult
 class CreateFeatureTool(BaseTool):
     name = "create_feature"
     description = "Create a new feature for a project. Requires project_id, name, and description."
+
+    def __init__(self, context_results: List[ContextSearchResult], auth_token: str):
+        super().__init__(context_results)
+        self.auth_token = auth_token
 
     async def execute(
         self,
@@ -29,20 +33,16 @@ class CreateFeatureTool(BaseTool):
 
         try:
             supabase_url = os.environ.get('SUPABASE_URL')
-            supabase_service_key = os.environ.get('SUPABASE_SERVICE_KEY')
             
-            if not supabase_url or not supabase_service_key:
+            if not supabase_url:
                 raise ValueError("Missing Supabase configuration")
-
-            print(f"Supabase URL: {supabase_url}")
 
             # Call the student-create-feature edge function
             async with aiohttp.ClientSession() as session:
                 async with session.post(
                     f"{supabase_url}/functions/v1/student-create-feature",
                     headers={
-                        "Authorization": f"Bearer {supabase_service_key}",
-                        "apikey": supabase_service_key,
+                        "Authorization": f"Bearer {self.auth_token}",
                         "Content-Type": "application/json"
                     },
                     json={

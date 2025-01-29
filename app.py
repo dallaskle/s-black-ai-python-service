@@ -46,6 +46,7 @@ class ChatRequest(BaseModel):
     user_id: str
     project_id: Optional[str] = None
     feature_id: Optional[str] = None
+    authToken: str
     base_prompt: str = """You are an AI assistant helping with software development tasks.
     You can help create and manage features, answer questions, and provide guidance.
     Use the available tools when necessary to perform actions."""
@@ -138,7 +139,8 @@ async def chat(request: ChatRequest, api_key: str = Depends(get_api_key)):
             base_prompt=request.base_prompt,
             user_id=request.user_id,
             project_id=request.project_id,
-            feature_id=request.feature_id
+            feature_id=request.feature_id,
+            authToken=request.authToken
         )
 
         print("✓ Chat response generated successfully")

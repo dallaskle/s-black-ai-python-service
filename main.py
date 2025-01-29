@@ -239,6 +239,7 @@ async def generate_ai_response(
     prompt: str,
     base_prompt: str,
     user_id: str,
+    authToken: str,
     project_id: Optional[str] = None,
     feature_id: Optional[str] = None
 ) -> Dict[str, Any]:
@@ -263,7 +264,7 @@ async def generate_ai_response(
 
         # 4. Initialize available tools with context
         tools = [
-            CreateFeatureTool(context_results=context_results),
+            CreateFeatureTool(context_results=context_results, auth_token=authToken),
             # Add other tools here as they're implemented
         ]
         print("Initialized tools")
