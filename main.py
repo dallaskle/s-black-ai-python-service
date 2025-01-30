@@ -9,6 +9,7 @@ import aiohttp
 import json
 from tools.base import ContextSearchResult
 from tools.create_feature import CreateFeatureTool
+import asyncio
 
 load_dotenv()
 
@@ -128,7 +129,7 @@ async def process_with_langchain(
     
     Then continue with your explanation.
     
-    After your analysis, please end your response with three dashes followed by a newline and your final user-friendly message.
+    After your analysis, please end your response with three dashes followed by a newline and your final user-friendly message. It should include any important they'll want.
     Example:
     [Your analysis here]
     ---
@@ -250,6 +251,157 @@ async def process_document(
 
     print("✓ Successfully processed and stored document")
 
+async def generate_conversation_summary(messages: List[Dict]) -> str:
+    """Generate a summary of the conversation using the LLM"""
+    summary_prompt = """Summarize the key points of this conversation, focusing on:
+    1. The main goal or task
+    2. Important decisions or information
+    3. Current status or progress
+    
+    Conversation:
+    {conversation}
+    
+    Summary:"""
+    
+    conversation_text = "\n".join([
+        f"User: {msg.get('user_input')}\n"
+        f"Assistant: {msg.get('agent_response')}" if msg.get('agent_response') else ""
+        for msg in messages
+    ])
+    
+    llm = ChatOpenAI(temperature=0.3, model_name=os.getenv("OPENAI_MODEL_NAME"))
+    response = await llm.ainvoke(
+        PromptTemplate(
+            template=summary_prompt,
+            input_variables=["conversation"]
+        ).format(conversation=conversation_text)
+    )
+    
+    return response.content
+
+async def generate_weighted_context(
+    current_query: str,
+    conversation_history: List[Dict],
+    max_recent_messages: int = 5
+) -> List[ContextSearchResult]:
+    """Generate context based on current query and conversation history"""
+    
+    print("\n=== Starting Context Generation ===")
+    print(f"Current Query: {current_query}")
+    print(f"Conversation Length: {len(conversation_history) if conversation_history else 0} messages")
+    print(f"Max Recent Messages: {max_recent_messages}")
+    
+    if not conversation_history:
+        print("No conversation history, using only current query")
+        embedding = await generate_embedding(current_query)
+        return await get_relevant_context(current_query, embedding)
+    
+    # Initialize search contexts list
+    search_contexts = []
+    
+    # Calculate weights based on whether we'll need a summary
+    has_summary = len(conversation_history) > max_recent_messages
+    weight = 0.25 if has_summary else 0.33
+    print(f"\nWeight Distribution: {weight} {'(with summary)' if has_summary else '(no summary needed)'}")
+    
+    # Add current query
+    search_contexts.append(('current_query', current_query, weight))
+    print(f"\nAdded Current Query: {current_query[:100]}...")
+    
+    # Always include the first message
+    first_message = conversation_history[0]
+    first_message_text = first_message.get('user_input', '')
+    search_contexts.append(('first_message', first_message_text, weight))
+    print(f"Added First Message: {first_message_text[:100]}...")
+    
+    # Handle recent messages and summary
+    if len(conversation_history) <= max_recent_messages:
+        print(f"\nProcessing all messages (under {max_recent_messages} limit)")
+        # If under limit, include all messages except the first
+        recent_messages = conversation_history[1:]
+        if recent_messages:
+            combined_recent = " ".join([
+                f"User: {msg.get('user_input')} "
+                f"Assistant: {msg.get('agent_response')}" if msg.get('agent_response') else ""
+                for msg in recent_messages
+            ])
+            search_contexts.append(('recent_messages', combined_recent, weight))
+            print(f"Added Recent Messages ({len(recent_messages)} messages)")
+    else:
+        print(f"\nProcessing with summary (over {max_recent_messages} messages)")
+        # 1. Get recent messages
+        recent_messages = conversation_history[-max_recent_messages:]
+        combined_recent = " ".join([
+            f"User: {msg.get('user_input')} "
+            f"Assistant: {msg.get('agent_response')}" if msg.get('agent_response') else ""
+            for msg in recent_messages
+        ])
+        search_contexts.append(('recent_messages', combined_recent, weight))
+        print(f"Added Recent Messages (last {len(recent_messages)} messages)")
+        
+        # 2. Generate summary of older messages
+        older_messages = conversation_history[1:-max_recent_messages]
+        if older_messages:
+            print(f"Generating summary for {len(older_messages)} older messages")
+            summary = await generate_conversation_summary(older_messages)
+            search_contexts.append(('summary', summary, weight))
+            print(f"Added Summary: {summary[:100]}...")
+    
+    print("\n=== Context Search Results ===")
+    # Generate embeddings and search in parallel
+    async def search_with_weight(context_type: str, text: str, weight: float):
+        if not text.strip():
+            print(f"Skipping empty {context_type}")
+            return []
+        print(f"\nProcessing {context_type}:")
+        print(f"- Text: {text[:100]}...")
+        embedding = await generate_embedding(text)
+        contexts = await get_relevant_context(text, embedding)
+        print(f"- Found {len(contexts)} relevant items")
+        # Apply weight to similarity scores
+        for context in contexts:
+            context.similarity *= weight
+        return contexts
+    
+    # Run searches in parallel
+    context_results = await asyncio.gather(*[
+        search_with_weight(context_type, text, weight) 
+        for context_type, text, weight in search_contexts
+    ])
+    
+    # Combine and deduplicate results
+    all_contexts: Dict[str, ContextSearchResult] = {}
+    for contexts in context_results:
+        for context in contexts:
+            if context.id in all_contexts:
+                print(f"\nDuplicate found for document {context.id}")
+                print(f"- Current similarity: {all_contexts[context.id].similarity}")
+                print(f"- New similarity: {context.similarity}")
+                all_contexts[context.id].similarity = max(
+                    all_contexts[context.id].similarity,
+                    context.similarity
+                )
+                print(f"- Kept similarity: {all_contexts[context.id].similarity}")
+            else:
+                all_contexts[context.id] = context
+    
+    # Sort by similarity and return
+    final_results = sorted(
+        all_contexts.values(),
+        key=lambda x: x.similarity,
+        reverse=True
+    )
+    
+    print("\n=== Final Context Summary ===")
+    print(f"Total unique contexts: {len(final_results)}")
+    print("Top 3 most relevant contexts:")
+    for i, ctx in enumerate(final_results[:3], 1):
+        print(f"{i}. Similarity: {ctx.similarity:.3f}")
+        print(f"   Type: {ctx.doc_type}")
+        print(f"   Content: {ctx.content[:100]}...")
+    
+    return final_results
+
 async def generate_ai_response(
     prompt: str,
     base_prompt: str,
@@ -264,55 +416,40 @@ async def generate_ai_response(
     print(f"\n=== Generating AI Response ===")
     print(f"Initial prompt: {prompt[:100]}...")
     
-    # Log conversation history processing
-    if conversation_history:
-        print("\n=== Processing Conversation History ===")
-        print(f"Number of history items: {len(conversation_history)}")
-        
-        conversation_context = "\n\nPrevious conversation:\n" + "\n".join([
-            f"User: {msg.get('user_input')}\n"
-            f"{f'Assistant: {msg.get('agent_response')}' if msg.get('agent_response') else ''}"
-            for msg in conversation_history
-        ])
-        print("\nFormatted conversation context:")
-        print(conversation_context)
-        print("\n=== End Conversation History ===")
-    
     try:
-        # 1. Generate embedding for the query
-        embedding = await generate_embedding(prompt)
-        print("Generated embedding")
-        
-        # 2. Get relevant context using similarity search
-        context_results = await get_relevant_context(prompt, embedding)
+        # Get weighted context from current query and conversation history
+        context_results = await generate_weighted_context(
+            current_query=prompt,
+            conversation_history=conversation_history
+        )
         print(f"Found {len(context_results)} relevant context items")
 
-        # 3. Format context for LLM
+        # Format context for LLM
         formatted_context = "\n".join([
             f"Document ({doc.doc_type}): {doc.content}\n"
             f"Metadata: {json.dumps(doc.metadata)}\n"
             for doc in context_results
         ])
 
-        # Add conversation history to context if available
+        # Add conversation history to context
         if conversation_history:
             conversation_context = "\n\nPrevious conversation:\n" + "\n".join([
                 f"User: {msg.get('user_input')}\n"
-                f"{f'Assistant: {msg.get('agent_response')}' if msg.get('agent_response') else ''}"
+                f"Assistant: {msg.get('agent_response')}" if msg.get('agent_response') else ""
                 for msg in conversation_history
             ])
             formatted_context = conversation_context + "\n\n" + formatted_context
 
         print("Formatted context")
 
-        # 4. Initialize available tools with context
+        # Initialize available tools with context
         tools = [
             CreateFeatureTool(context_results=context_results, auth_token=authToken),
             # Add other tools here as they're implemented
         ]
         print("Initialized tools")
 
-        # 5. Process with LangChain
+        # Process with LangChain
         result = await process_with_langchain(
             query=prompt,
             context=formatted_context,
