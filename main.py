@@ -260,7 +260,23 @@ async def generate_ai_response(
     conversation_history: Optional[List[Dict]] = None
 ) -> Dict[str, Any]:
     """Generate an AI response based on the prompt and context"""
-    print(f"Generating AI response for prompt: {prompt}")
+    print(f"\n=== Generating AI Response ===")
+    print(f"Initial prompt: {prompt[:100]}...")
+    
+    # Log conversation history processing
+    if conversation_history:
+        print("\n=== Processing Conversation History ===")
+        print(f"Number of history items: {len(conversation_history)}")
+        
+        conversation_context = "\n\nPrevious conversation:\n" + "\n".join([
+            f"{'User' if msg.get('agent_name') == 'user' else 'Assistant'}: {msg.get('user_input')}\n"
+            f"{'Assistant: ' + msg.get('agent_response') if msg.get('agent_response') else ''}"
+            for msg in conversation_history
+        ])
+        print("\nFormatted conversation context:")
+        print(conversation_context)
+        print("\n=== End Conversation History ===")
+    
     try:
         # 1. Generate embedding for the query
         embedding = await generate_embedding(prompt)

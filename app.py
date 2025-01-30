@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 from dotenv import load_dotenv
 from datetime import datetime
+import json
 
 load_dotenv()
 
@@ -123,6 +124,31 @@ async def chat(request: ChatRequest, api_key: str = Depends(get_api_key)):
     print(f"- Feature ID: {request.feature_id}")
     print(f"- Conversation ID: {request.conversation_id}")
     print(f"- Content: {request.content[:100]}...")
+    
+    # Add detailed conversation history logging
+    if request.conversation_history:
+        print("\n=== Conversation History Details ===")
+        print(f"Number of previous messages: {len(request.conversation_history)}")
+        print("Message structure sample:")
+        if len(request.conversation_history) > 0:
+            sample_msg = request.conversation_history[0]
+            print(json.dumps({
+                "sample_message": {
+                    "agent_name": sample_msg.get("agent_name"),
+                    "user_input": sample_msg.get("user_input"),
+                    "agent_response": sample_msg.get("agent_response"),
+                    "has_user_input": bool(sample_msg.get("user_input")),
+                    "has_agent_response": bool(sample_msg.get("agent_response"))
+                }
+            }, indent=2))
+        print("\nAll messages summary:")
+        for idx, msg in enumerate(request.conversation_history):
+            print(f"Message {idx + 1}:")
+            print(f"  - Agent: {msg.get('agent_name')}")
+            print(f"  - User Input: {msg.get('user_input')[:100]}...")
+            print(f"  - Has Response: {bool(msg.get('agent_response'))}")
+    else:
+        print("\nNo conversation history provided")
     
     try:
         result = await generate_ai_response(
