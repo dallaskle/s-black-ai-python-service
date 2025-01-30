@@ -6,8 +6,6 @@ from main import generate_ai_response, process_document
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from dotenv import load_dotenv
-from uploadMessageHistory import upload_message_history
-from messageSearch import search_messages
 from datetime import datetime
 
 load_dotenv()
@@ -94,16 +92,6 @@ class MessageSearchResponse(BaseModel):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
-
-@app.post("/documents")
-async def upload_document(
-    file: UploadFile = File(...),
-    clone_id: str = Form(...),
-    pinecone_index: str = Form(...),
-    workspace_id: Optional[str] = Form(None),
-    channel_id: Optional[str] = Form(None),
-    api_key: str = Depends(get_api_key)
-):
     print("\n=== Document Upload Endpoint ===")
     print(f"Request details:")
     print(f"- File: {file.filename} ({file.content_type})")
@@ -166,67 +154,5 @@ async def chat(request: ChatRequest, api_key: str = Depends(get_api_key)):
         return ChatResponse(
             success=False,
             response="",
-            error=str(e)
-        )
-
-@app.post("/message-history")
-async def upload_messages(
-    request: MessageHistoryUpload,
-    api_key: str = Depends(get_api_key)
-):
-    print("\n=== Message History Upload Endpoint ===")
-    print(f"Request details:")
-    print(f"- Workspace ID: {request.workspace_id}")
-    print(f"- Message count: {len(request.messages)}")
-    print(f"- Pinecone Index: {request.pinecone_index}")
-    print(f"- Time range: {request.time_range.start} to {request.time_range.end}")
-    
-    try:
-        result = await upload_message_history(
-            messages=request.messages,
-            workspace_id=request.workspace_id,
-            pinecone_index=request.pinecone_index,
-            time_range={
-                "start": request.time_range.start,
-                "end": request.time_range.end
-            }
-        )
-        print("✓ Message history processing completed successfully")
-        return result
-    except Exception as e:
-        print(f"❌ Error in upload_messages: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
-
-@app.post("/message-search", response_model=MessageSearchResponse)
-async def message_search(request: MessageSearchRequest, api_key: str = Depends(get_api_key)):
-    print("\n=== Message Search Endpoint ===")
-    print(f"Request details:")
-    print(f"- Workspace ID: {request.workspace_id}")
-    print(f"- Channel ID: {request.channel_id}")
-    print(f"- Query: {request.query[:100]}...")
-    
-    try:
-        result = await search_messages(
-            query=request.query,
-            workspace_id=request.workspace_id,
-            channel_id=request.channel_id,
-            base_prompt=request.base_prompt,
-            pinecone_index=request.pinecone_index
-        )
-        print("✓ Message search completed successfully")
-        return MessageSearchResponse(
-            status="success",
-            context=result.get("context"),
-            results=result.get("results"),
-            ai_response=result.get("ai_response"),
-            error=None
-        )
-    except Exception as e:
-        print(f"❌ Error in message search: {str(e)}")
-        return MessageSearchResponse(
-            status="error",
-            context=None,
-            results=None,
-            ai_response=None,
             error=str(e)
         )
