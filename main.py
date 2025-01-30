@@ -102,8 +102,7 @@ async def process_with_langchain(
     tools: List[Any]
 ) -> Dict[str, Any]:
     """Process the query using LangChain with the given context and tools"""
-    prompt_template = """You are an AI assistant helping navigate the Group User Testing platform. .
-    You have a toolset to help you with your tasks. But also should be generally helpful and responsive.
+    prompt_template = """You are an AI assistant helping navigate the Group User Testing platform.
     Use the following context to understand the current state and requirements:
     
     {context}
@@ -119,21 +118,26 @@ async def process_with_langchain(
     Available Tools:
     {tool_descriptions}
     
-    If you need to use a tool, format your response like this:
+    If you need to use a tool, your response MUST follow this EXACT format:
+    1. Your analysis
+    2. Tool command in this format (including both markers):
     TOOL_START
     tool_name: {{
         "param1": "value1",
         "param2": "value2"
     }}
     TOOL_END
-    
-    Then continue with your explanation.
-    
-    After your analysis, please end your response with three dashes followed by a newline and your final user-friendly message. It should include any important they'll want.
-    Example:
-    [Your analysis here]
-    ---
-    [Your user-friendly message here]
+    3. Three dashes
+    4. Your user-friendly message
+
+    IMPORTANT RULES:
+    - When creating features, NEVER use null for descriptions
+    - If a description isn't provided, generate a comprehensive description that explains:
+      * What the feature does
+      * Its main functionality
+      * Key benefits or purpose
+      * Any important technical details if relevant
+    - All descriptions should be clear and detailed, typically 1-3 sentences
     
     Response:"""
     
@@ -176,7 +180,11 @@ async def process_with_langchain(
             # Extract tool command
             tool_section = content[content.index("TOOL_START"):content.index("TOOL_END")]
             tool_name = tool_section.split(":")[0].replace("TOOL_START", "").strip()
-            tool_params = json.loads(tool_section.split(":", 1)[1].strip())
+            # Clean up the JSON string before parsing
+            json_str = tool_section.split(":", 1)[1].strip()
+            # Remove any potential comments (anything after // on a line)
+            json_str = "\n".join([line.split("//")[0].rstrip() for line in json_str.split("\n")])
+            tool_params = json.loads(json_str)
             
             # Find and execute the tool
             for tool in tools:
