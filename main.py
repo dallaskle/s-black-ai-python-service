@@ -11,6 +11,7 @@ from tools.base import ContextSearchResult
 from tools.create_feature import CreateFeatureTool
 from tools.update_feature import UpdateFeatureTool
 from tools.delete_feature import DeleteFeatureTool
+from tools.get_feature_info import GetFeatureInfoTool
 import asyncio
 
 load_dotenv()
@@ -140,6 +141,7 @@ async def process_with_langchain(
       * Key benefits or purpose
       * Any important technical details if relevant
     - All descriptions should be clear and detailed, typically 1-3 sentences
+    - When getting feature info, always use the get_feature_info tool to get complete details including validations and testing tickets
     
     Response:"""
     
@@ -457,7 +459,7 @@ async def generate_ai_response(
             CreateFeatureTool(context_results=context_results, auth_token=authToken),
             UpdateFeatureTool(context_results=context_results, auth_token=authToken),
             DeleteFeatureTool(context_results=context_results, auth_token=authToken),
-            # Add other tools here as they're implemented
+            GetFeatureInfoTool(context_results=context_results, auth_token=authToken),
         ]
         print("Initialized tools")
 
