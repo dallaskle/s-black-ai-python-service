@@ -128,6 +128,12 @@ async def process_with_langchain(
     
     Then continue with your explanation.
     
+    After your analysis, please end your response with three dashes followed by a newline and your final user-friendly message.
+    Example:
+    [Your analysis here]
+    ---
+    [Your user-friendly message here]
+    
     Response:"""
     
     tool_descriptions = "\n".join([
@@ -151,10 +157,18 @@ async def process_with_langchain(
         )
     )
     
-    # Parse the response to find tool commands
+    # Parse the response to find tool commands and user message
     content = response.content
     tool_used = None
     tool_result = None
+    user_message = None
+    
+    # Extract user message if it exists (after ---)
+    if "---" in content:
+        parts = content.split("---")
+        content = parts[0].strip()
+        if len(parts) > 1:
+            user_message = parts[1].strip()
     
     try:
         if "TOOL_START" in content and "TOOL_END" in content:
@@ -176,7 +190,8 @@ async def process_with_langchain(
     return {
         "response": content,
         "tool_used": tool_used,
-        "tool_result": tool_result
+        "tool_result": tool_result,
+        "user_message": user_message
     }
 
 async def process_document(

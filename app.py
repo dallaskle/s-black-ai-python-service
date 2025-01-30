@@ -157,7 +157,8 @@ async def chat(request: ChatRequest, api_key: str = Depends(get_api_key)):
                 "feature_id": request.feature_id,
                 "conversation_id": request.conversation_id,
                 "tool_used": result.get("tool_used"),
-                "tool_result": result.get("tool_result")
+                "tool_result": result.get("tool_result"),
+                "message": result.get("user_message", result["response"])  # Use user_message if available, fallback to full response
             }
         )
     except Exception as e:
