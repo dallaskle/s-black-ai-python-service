@@ -101,7 +101,8 @@ async def process_with_langchain(
     tools: List[Any]
 ) -> Dict[str, Any]:
     """Process the query using LangChain with the given context and tools"""
-    prompt_template = """You are an AI assistant helping with software development tasks.
+    prompt_template = """You are an AI assistant helping navigate the Group User Testing platform. .
+    You have a toolset to help you with your tasks. But also should be generally helpful and responsive.
     Use the following context to understand the current state and requirements:
     
     {context}
@@ -269,8 +270,8 @@ async def generate_ai_response(
         print(f"Number of history items: {len(conversation_history)}")
         
         conversation_context = "\n\nPrevious conversation:\n" + "\n".join([
-            f"{'User' if msg.get('agent_name') == 'user' else 'Assistant'}: {msg.get('user_input')}\n"
-            f"{'Assistant: ' + msg.get('agent_response') if msg.get('agent_response') else ''}"
+            f"User: {msg.get('user_input')}\n"
+            f"{f'Assistant: {msg.get('agent_response')}' if msg.get('agent_response') else ''}"
             for msg in conversation_history
         ])
         print("\nFormatted conversation context:")
@@ -296,8 +297,8 @@ async def generate_ai_response(
         # Add conversation history to context if available
         if conversation_history:
             conversation_context = "\n\nPrevious conversation:\n" + "\n".join([
-                f"{'User' if msg.get('agent_name') == 'user' else 'Assistant'}: {msg.get('user_input')}\n"
-                f"{'Assistant: ' + msg.get('agent_response') if msg.get('agent_response') else ''}"
+                f"User: {msg.get('user_input')}\n"
+                f"{f'Assistant: {msg.get('agent_response')}' if msg.get('agent_response') else ''}"
                 for msg in conversation_history
             ])
             formatted_context = conversation_context + "\n\n" + formatted_context
