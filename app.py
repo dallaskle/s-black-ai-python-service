@@ -46,6 +46,8 @@ class ChatRequest(BaseModel):
     user_id: str
     project_id: Optional[str] = None
     feature_id: Optional[str] = None
+    conversation_id: Optional[str] = None
+    conversation_history: Optional[List[Dict[str, Any]]] = None
     authToken: str
     base_prompt: str = """You are an AI assistant helping with software development tasks.
     You can help create and manage features, answer questions, and provide guidance.
@@ -131,6 +133,7 @@ async def chat(request: ChatRequest, api_key: str = Depends(get_api_key)):
     print(f"- User ID: {request.user_id}")
     print(f"- Project ID: {request.project_id}")
     print(f"- Feature ID: {request.feature_id}")
+    print(f"- Conversation ID: {request.conversation_id}")
     print(f"- Content: {request.content[:100]}...")
     
     try:
@@ -140,6 +143,8 @@ async def chat(request: ChatRequest, api_key: str = Depends(get_api_key)):
             user_id=request.user_id,
             project_id=request.project_id,
             feature_id=request.feature_id,
+            conversation_id=request.conversation_id,
+            conversation_history=request.conversation_history,
             authToken=request.authToken
         )
 
@@ -150,6 +155,7 @@ async def chat(request: ChatRequest, api_key: str = Depends(get_api_key)):
             metadata={
                 "project_id": request.project_id,
                 "feature_id": request.feature_id,
+                "conversation_id": request.conversation_id,
                 "tool_used": result.get("tool_used"),
                 "tool_result": result.get("tool_result")
             }

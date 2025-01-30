@@ -241,7 +241,9 @@ async def generate_ai_response(
     user_id: str,
     authToken: str,
     project_id: Optional[str] = None,
-    feature_id: Optional[str] = None
+    feature_id: Optional[str] = None,
+    conversation_id: Optional[str] = None,
+    conversation_history: Optional[List[Dict]] = None
 ) -> Dict[str, Any]:
     """Generate an AI response based on the prompt and context"""
     print(f"Generating AI response for prompt: {prompt}")
@@ -260,6 +262,16 @@ async def generate_ai_response(
             f"Metadata: {json.dumps(doc.metadata)}\n"
             for doc in context_results
         ])
+
+        # Add conversation history to context if available
+        if conversation_history:
+            conversation_context = "\n\nPrevious conversation:\n" + "\n".join([
+                f"{'User' if msg.get('agent_name') == 'user' else 'Assistant'}: {msg.get('user_input')}\n"
+                f"{'Assistant: ' + msg.get('agent_response') if msg.get('agent_response') else ''}"
+                for msg in conversation_history
+            ])
+            formatted_context = conversation_context + "\n\n" + formatted_context
+
         print("Formatted context")
 
         # 4. Initialize available tools with context
