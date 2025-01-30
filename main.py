@@ -9,6 +9,7 @@ import aiohttp
 import json
 from tools.base import ContextSearchResult
 from tools.create_feature import CreateFeatureTool
+from tools.update_feature import UpdateFeatureTool
 import asyncio
 
 load_dotenv()
@@ -453,6 +454,7 @@ async def generate_ai_response(
         # Initialize available tools with context
         tools = [
             CreateFeatureTool(context_results=context_results, auth_token=authToken),
+            UpdateFeatureTool(context_results=context_results, auth_token=authToken),
             # Add other tools here as they're implemented
         ]
         print("Initialized tools")
