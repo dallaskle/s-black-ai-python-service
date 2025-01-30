@@ -10,6 +10,7 @@ import json
 from tools.base import ContextSearchResult
 from tools.create_feature import CreateFeatureTool
 from tools.update_feature import UpdateFeatureTool
+from tools.delete_feature import DeleteFeatureTool
 import asyncio
 
 load_dotenv()
@@ -455,6 +456,7 @@ async def generate_ai_response(
         tools = [
             CreateFeatureTool(context_results=context_results, auth_token=authToken),
             UpdateFeatureTool(context_results=context_results, auth_token=authToken),
+            DeleteFeatureTool(context_results=context_results, auth_token=authToken),
             # Add other tools here as they're implemented
         ]
         print("Initialized tools")
