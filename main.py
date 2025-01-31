@@ -14,6 +14,7 @@ from tools.delete_feature import DeleteFeatureTool
 from tools.get_feature_info import GetFeatureInfoTool
 from tools.get_project_info import GetProjectInfoTool
 from tools.get_validations import GetValidationsTool
+from tools.get_outstanding_tests import GetOutstandingTestsTool
 import asyncio
 
 load_dotenv()
@@ -104,7 +105,8 @@ async def generate_embedding(text: str) -> List[float]:
 async def process_with_langchain(
     query: str,
     context: str,
-    tools: List[Any]
+    tools: List[Any],
+    user_id: str
 ) -> Dict[str, Any]:
     """Process the query using LangChain with the given context and tools"""
     prompt_template = """You are an AI assistant helping navigate the Group User Testing platform.
@@ -144,6 +146,7 @@ async def process_with_langchain(
       * Any important technical details if relevant
     - All descriptions should be clear and detailed, typically 1-3 sentences
     - When getting feature info, always use the get_feature_info tool to get complete details including validations and testing tickets
+    - For tools that require user_id, use: {user_id}
     
     Response:"""
     
@@ -154,7 +157,7 @@ async def process_with_langchain(
     
     prompt = PromptTemplate(
         template=prompt_template,
-        input_variables=["context", "query", "tool_descriptions"]
+        input_variables=["context", "query", "tool_descriptions", "user_id"]
     )
     
     llm = ChatOpenAI(temperature=0.7, model_name=os.getenv("OPENAI_MODEL_NAME"))
@@ -164,7 +167,8 @@ async def process_with_langchain(
         prompt.format(
             context=context,
             query=query,
-            tool_descriptions=tool_descriptions
+            tool_descriptions=tool_descriptions,
+            user_id=user_id
         )
     )
     
@@ -196,6 +200,9 @@ async def process_with_langchain(
             for tool in tools:
                 if tool.name == tool_name:
                     tool_used = tool_name
+                    # Add user_id to tool params if not already present
+                    if hasattr(tool, 'execute') and 'user_id' in tool.execute.__annotations__:
+                        tool_params['user_id'] = user_id
                     tool_result = await tool.execute(**tool_params)
                     break
     except Exception as e:
@@ -464,6 +471,7 @@ async def generate_ai_response(
             GetFeatureInfoTool(context_results=context_results, auth_token=authToken),
             GetProjectInfoTool(context_results=context_results, auth_token=authToken),
             GetValidationsTool(context_results=context_results, auth_token=authToken),
+            GetOutstandingTestsTool(context_results=context_results, auth_token=authToken),
         ]
         print("Initialized tools")
 
@@ -471,7 +479,8 @@ async def generate_ai_response(
         result = await process_with_langchain(
             query=prompt,
             context=formatted_context,
-            tools=tools
+            tools=tools,
+            user_id=user_id
         )
         print("Processed with LangChain")
         print(f"Result: {result}")
