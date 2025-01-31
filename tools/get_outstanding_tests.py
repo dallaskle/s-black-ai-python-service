@@ -2,7 +2,7 @@ from typing import Dict, Any, Optional, List
 import aiohttp
 import os
 from .base import BaseTool, ContextSearchResult
-
+from langsmith import traceable
 class GetOutstandingTestsTool(BaseTool):
     name = "get_outstanding_tests"
     description = "Get a list of outstanding tests for the current user. Requires user_id parameter."
@@ -11,6 +11,7 @@ class GetOutstandingTestsTool(BaseTool):
         super().__init__(context_results)
         self.auth_token = auth_token
 
+    @traceable  
     async def execute(self, user_id: str) -> Dict[str, Any]:
         print(f"Get outstanding tests tool called for user: {user_id}")
 

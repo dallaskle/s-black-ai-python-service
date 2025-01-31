@@ -2,7 +2,7 @@ from typing import Dict, Any, Optional, List
 import aiohttp
 import os
 from .base import BaseTool, ContextSearchResult
-
+from langsmith import traceable
 class DeleteFeatureTool(BaseTool):
     name = "delete_feature"
     description = "Delete an existing feature. Requires feature_id. This action cannot be undone."
@@ -11,6 +11,7 @@ class DeleteFeatureTool(BaseTool):
         super().__init__(context_results)
         self.auth_token = auth_token
 
+    @traceable
     async def execute(
         self,
         feature_id: str,

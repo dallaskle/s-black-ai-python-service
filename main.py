@@ -16,6 +16,7 @@ from tools.get_project_info import GetProjectInfoTool
 from tools.get_validations import GetValidationsTool
 from tools.get_outstanding_tests import GetOutstandingTestsTool
 import asyncio
+from langsmith import traceable
 
 load_dotenv()
 
@@ -37,6 +38,7 @@ async def get_supabase_client():
         "key": supabase_service_key
     }
 
+@traceable
 async def get_relevant_context(
     query: str,
     embedding: List[float]
@@ -89,6 +91,7 @@ async def get_relevant_context(
             print(f"Context results: {context_results}")
             return context_results
 
+@traceable
 async def generate_embedding(text: str) -> List[float]:
     """Generate embedding for text using OpenAI"""
     try:
@@ -102,6 +105,7 @@ async def generate_embedding(text: str) -> List[float]:
         print(f"Error generating embedding: {str(e)}")
         raise
 
+@traceable
 async def process_with_langchain(
     query: str,
     context: str,
@@ -216,6 +220,7 @@ async def process_with_langchain(
         "user_message": user_message
     }
 
+@traceable
 async def process_document(
     file: UploadFile,
     user_id: str,
@@ -272,6 +277,7 @@ async def process_document(
 
     print("✓ Successfully processed and stored document")
 
+@traceable
 async def generate_conversation_summary(messages: List[Dict]) -> str:
     """Generate a summary of the conversation using the LLM"""
     summary_prompt = """Summarize the key points of this conversation, focusing on:
@@ -300,6 +306,7 @@ async def generate_conversation_summary(messages: List[Dict]) -> str:
     
     return response.content
 
+@traceable
 async def generate_weighted_context(
     current_query: str,
     conversation_history: List[Dict],
@@ -423,6 +430,7 @@ async def generate_weighted_context(
     
     return final_results
 
+@traceable
 async def generate_ai_response(
     prompt: str,
     base_prompt: str,

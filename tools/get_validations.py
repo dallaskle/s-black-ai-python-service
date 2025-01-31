@@ -2,7 +2,7 @@ from typing import Dict, Any, Optional, List
 import aiohttp
 import os
 from .base import BaseTool, ContextSearchResult
-
+from langsmith import traceable
 class GetValidationsTool(BaseTool):
     name = "get_validations"
     description = "Get validation details for a feature or project. Requires either feature_id or project_id."
@@ -11,6 +11,7 @@ class GetValidationsTool(BaseTool):
         super().__init__(context_results)
         self.auth_token = auth_token
 
+    @traceable  
     async def execute(
         self,
         feature_id: Optional[str] = None,

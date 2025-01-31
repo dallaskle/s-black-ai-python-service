@@ -2,7 +2,7 @@ from typing import Dict, Any, Optional, List
 import os
 import aiohttp
 from .base import BaseTool, ContextSearchResult
-
+from langsmith import traceable
 class GetProjectInfoTool(BaseTool):
     name = "get_project_info"
     description = "Get detailed information about a project including features, validation progress, and registry details. Requires project_id."
@@ -11,6 +11,7 @@ class GetProjectInfoTool(BaseTool):
         super().__init__(context_results)
         self.auth_token = auth_token
 
+    @traceable  
     async def execute(
         self,
         project_id: str,

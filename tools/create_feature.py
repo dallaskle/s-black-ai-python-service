@@ -2,7 +2,7 @@ from typing import Dict, Any, Optional, List
 import os
 import aiohttp
 from .base import BaseTool, ContextSearchResult
-
+from langsmith import traceable
 class CreateFeatureTool(BaseTool):
     name = "create_feature"
     description = "Create a new feature for a project. Requires project_id, name, and description."
@@ -11,6 +11,7 @@ class CreateFeatureTool(BaseTool):
         super().__init__(context_results)
         self.auth_token = auth_token
 
+    @traceable
     async def execute(
         self,
         name: str,

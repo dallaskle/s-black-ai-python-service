@@ -2,7 +2,7 @@ from typing import Dict, Any, Optional, List
 import aiohttp
 import os
 from .base import BaseTool, ContextSearchResult
-
+from langsmith import traceable
 class UpdateFeatureTool(BaseTool):
     name = "update_feature"
     description = "Update an existing feature's properties. Requires feature_id and at least one update field (name, description, status, required_validations)."
@@ -11,6 +11,7 @@ class UpdateFeatureTool(BaseTool):
         super().__init__(context_results)
         self.auth_token = auth_token
 
+    @traceable  
     async def execute(
         self,
         feature_id: str,

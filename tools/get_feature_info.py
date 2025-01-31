@@ -3,7 +3,7 @@ import os
 import aiohttp
 import asyncio
 from .base import BaseTool, ContextSearchResult
-
+from langsmith import traceable
 class GetFeatureInfoTool(BaseTool):
     name = "get_feature_info"
     description = "Get detailed information about a feature including its validations and testing tickets. Requires feature_id."
@@ -12,6 +12,7 @@ class GetFeatureInfoTool(BaseTool):
         super().__init__(context_results)
         self.auth_token = auth_token
 
+    @traceable  
     async def execute(self, feature_id: str) -> Dict[str, Any]:
         print(f"Get feature info tool called with feature_id: {feature_id}")
         

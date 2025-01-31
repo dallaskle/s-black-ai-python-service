@@ -9,6 +9,9 @@ from dotenv import load_dotenv
 from datetime import datetime
 import json
 
+# Add the traceable import
+from langsmith import traceable
+
 load_dotenv()
 
 app = FastAPI()
@@ -115,6 +118,7 @@ async def health_check():
         print(f"❌ Error in upload_document: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
 
+@traceable
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, api_key: str = Depends(get_api_key)):
     print("\n=== Chat Endpoint ===")

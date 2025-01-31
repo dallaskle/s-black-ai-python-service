@@ -1,6 +1,6 @@
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
-
+from langsmith import traceable
 class ContextSearchResult(BaseModel):
     id: str
     content: str
@@ -26,6 +26,7 @@ class BaseTool:
             return [doc for doc in self.context_results if doc.doc_type == doc_type]
         return self.context_results
 
+    @traceable
     async def execute(self, **kwargs) -> Dict[str, Any]:
         """Execute the tool with the given parameters"""
         raise NotImplementedError("Tool must implement execute method") 
