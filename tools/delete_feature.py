@@ -11,7 +11,7 @@ class DeleteFeatureTool(BaseTool):
         super().__init__(context_results)
         self.auth_token = auth_token
 
-    @traceable
+    @traceable(name="delete_feature")
     async def execute(
         self,
         feature_id: str,

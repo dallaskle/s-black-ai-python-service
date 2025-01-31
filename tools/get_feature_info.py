@@ -12,7 +12,7 @@ class GetFeatureInfoTool(BaseTool):
         super().__init__(context_results)
         self.auth_token = auth_token
 
-    @traceable  
+    @traceable(name="get_feature_info")
     async def execute(self, feature_id: str) -> Dict[str, Any]:
         print(f"Get feature info tool called with feature_id: {feature_id}")
         

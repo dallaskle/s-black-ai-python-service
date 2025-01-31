@@ -11,7 +11,7 @@ class UpdateFeatureTool(BaseTool):
         super().__init__(context_results)
         self.auth_token = auth_token
 
-    @traceable  
+    @traceable(name="update_feature")
     async def execute(
         self,
         feature_id: str,

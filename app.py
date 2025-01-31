@@ -121,7 +121,7 @@ async def health_check():
 @traceable
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, api_key: str = Depends(get_api_key)):
-    print("\n=== Chat Endpoint ===")
+    print("\n=== In Chat Endpoint ===")
     print(f"Request details:")
     print(f"- User ID: {request.user_id}")
     print(f"- Project ID: {request.project_id}")

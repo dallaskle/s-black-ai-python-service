@@ -11,7 +11,7 @@ class GetProjectInfoTool(BaseTool):
         super().__init__(context_results)
         self.auth_token = auth_token
 
-    @traceable  
+    @traceable(name="get_project_info")
     async def execute(
         self,
         project_id: str,

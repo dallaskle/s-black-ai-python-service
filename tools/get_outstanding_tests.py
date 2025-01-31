@@ -11,7 +11,7 @@ class GetOutstandingTestsTool(BaseTool):
         super().__init__(context_results)
         self.auth_token = auth_token
 
-    @traceable  
+    @traceable(name="get_outstanding_tests")
     async def execute(self, user_id: str) -> Dict[str, Any]:
         print(f"Get outstanding tests tool called for user: {user_id}")
 

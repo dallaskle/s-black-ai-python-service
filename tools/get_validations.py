@@ -11,7 +11,7 @@ class GetValidationsTool(BaseTool):
         super().__init__(context_results)
         self.auth_token = auth_token
 
-    @traceable  
+    @traceable(name="get_validations")
     async def execute(
         self,
         feature_id: Optional[str] = None,
