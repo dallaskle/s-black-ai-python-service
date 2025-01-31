@@ -13,6 +13,7 @@ from tools.update_feature import UpdateFeatureTool
 from tools.delete_feature import DeleteFeatureTool
 from tools.get_feature_info import GetFeatureInfoTool
 from tools.get_project_info import GetProjectInfoTool
+from tools.get_validations import GetValidationsTool
 import asyncio
 
 load_dotenv()
@@ -462,6 +463,7 @@ async def generate_ai_response(
             DeleteFeatureTool(context_results=context_results, auth_token=authToken),
             GetFeatureInfoTool(context_results=context_results, auth_token=authToken),
             GetProjectInfoTool(context_results=context_results, auth_token=authToken),
+            GetValidationsTool(context_results=context_results, auth_token=authToken),
         ]
         print("Initialized tools")
 
